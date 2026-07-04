@@ -1,8 +1,8 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "fastapi",
-#     "uvicorn",
+#      "fastapi",
+#      "uvicorn",
 # ]
 # ///
 
@@ -18,39 +18,38 @@ ALLOWED_ORIGIN = "https://dash-55nz6e.example.com"
 async def cors_and_custom_headers_middleware(request: Request, call_next):
     start_time = time.time()
     request_id = str(uuid.uuid4())
+    origin = request.headers.get("Origin")
     
-    # Handle preflight OPTIONS requests manually to ensure perfect control over status codes
+    # --- 1. HANDLE PREFLIGHT OPTIONS EXPLICITLY ---
     if request.method == "OPTIONS":
         response = Response(status_code=200)
-        origin = request.headers.get("Origin")
         if origin == ALLOWED_ORIGIN:
             response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
             response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Request-ID, X-Process-Time"
             response.headers["Access-Control-Allow-Credentials"] = "true"
         
-        # Add required tracking headers even to preflight requests
+        # Stamp telemetry onto preflight safely
         process_time = time.time() - start_time
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = f"{process_time:.6f}"
         return response
 
-    # Process standard GET /stats requests
+    # --- 2. EXECUTE CORE API LOGIC ---
     response = await call_next(request)
     
-    # Inject CORS headers if the origin matches
-    origin = request.headers.get("Origin")
+    # --- 3. APPLY GET CORS RULES ---
     if origin == ALLOWED_ORIGIN:
         response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
         response.headers["Access-Control-Allow-Credentials"] = "true"
     
-    # Calculate duration and inject required middleware headers
+    # --- 4. STAMP MANDATORY HEADERS ON EVERY RESPONSE ---
     process_time = time.time() - start_time
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{process_time:.6f}"
     
-    # Crucial: Tell the grader's browser script it is allowed to read these custom headers
-    response.headers["Access-Control-Expose-Headers"] = "X-Request-ID, X-Process-Time"
+    # --- 5. EXPOSE CUSTOM HEADERS TO BROWSER SCRIPTS ---
+    response.headers["Access-Control-Expose-Headers"] = "X-Request-ID, X-Process-Time, Content-Type"
     
     return response
 
