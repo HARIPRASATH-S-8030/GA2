@@ -22,14 +22,17 @@ async def cors_and_custom_headers_middleware(request: Request, call_next):
     
     # --- 1. HANDLE PREFLIGHT OPTIONS EXPLICITLY ---
     if request.method == "OPTIONS":
-        response = Response(status_code=200)
         if origin == ALLOWED_ORIGIN:
+            response = Response(status_code=200)
             response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
             response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Request-ID, X-Process-Time"
             response.headers["Access-Control-Allow-Credentials"] = "true"
+        else:
+            # Strictly REJECT invalid origins with a 400 Bad Request and NO ACAO header
+            response = Response(content="CORS Origin Not Allowed", status_code=400)
         
-        # Stamp telemetry onto preflight safely
+        # Every response must carry these tracking headers
         process_time = time.time() - start_time
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = f"{process_time:.6f}"
@@ -47,9 +50,7 @@ async def cors_and_custom_headers_middleware(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{process_time:.6f}"
-    
-    # --- 5. EXPOSE CUSTOM HEADERS TO BROWSER SCRIPTS ---
-    response.headers["Access-Control-Expose-Headers"] = "X-Request-ID, X-Process-Time, Content-Type"
+    response.headers["Access-Control-Expose-Headers"] = "X-Request-ID, X-Process-Time"
     
     return response
 
