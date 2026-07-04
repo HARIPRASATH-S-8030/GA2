@@ -6,64 +6,64 @@
 # ]
 # ///
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 import time
 import uuid
 
 app = FastAPI()
 
-# Your strictly allowed CORS origin assigned by the grader
 ALLOWED_ORIGIN = "https://dash-55nz6e.example.com"
 
-# FastAPI's CORSMiddleware automatically handles preflight OPTIONS 
-# and sets Access-Control-Allow-Origin only for this explicit origin.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[ALLOWED_ORIGIN],
-    allow_credentials=True,
-    allow_methods=["GET", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-# Custom middleware to add X-Request-ID and X-Process-Time to EVERY response
 @app.middleware("http")
-async def add_custom_headers(request: Request, call_next):
+async def cors_and_custom_headers_middleware(request: Request, call_next):
     start_time = time.time()
-    
-    # Generate a unique tracking UUID for this specific request
     request_id = str(uuid.uuid4())
     
-    # Process the request down the line
+    # Handle preflight OPTIONS requests manually to ensure perfect control over status codes
+    if request.method == "OPTIONS":
+        response = Response(status_code=200)
+        origin = request.headers.get("Origin")
+        if origin == ALLOWED_ORIGIN:
+            response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+        # Add required tracking headers even to preflight requests
+        process_time = time.time() - start_time
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time"] = f"{process_time:.6f}"
+        return response
+
+    # Process standard GET /stats requests
     response = await call_next(request)
     
-    # Calculate duration
-    process_time = time.time() - start_time
+    # Inject CORS headers if the origin matches
+    origin = request.headers.get("Origin")
+    if origin == ALLOWED_ORIGIN:
+        response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
+        response.headers["Access-Control-Allow-Credentials"] = "true"
     
-    # Attach required custom headers to the outgoing response
+    # Calculate duration and inject required middleware headers
+    process_time = time.time() - start_time
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{process_time:.6f}"
+    
+    # Crucial: Tell the grader's browser script it is allowed to read these custom headers
+    response.headers["Access-Control-Expose-Headers"] = "X-Request-ID, X-Process-Time"
     
     return response
 
 @app.get("/stats")
 async def calculate_stats(values: str = Query(..., description="Comma-separated integers")):
     try:
-        # Parse the comma-separated string into actual Python integers
         parsed_values = [int(v.strip()) for v in values.split(",") if v.strip()]
     except ValueError:
-        raise HTTPException(
-            status_code=400, 
-            detail="Invalid input. Ensure the values parameter contains only integers separated by commas."
-        )
+        raise HTTPException(status_code=400, detail="Invalid input integers.")
 
     if not parsed_values:
-        raise HTTPException(
-            status_code=400, 
-            detail="No values provided to calculate statistics."
-        )
+        raise HTTPException(status_code=400, detail="No values provided.")
 
-    # Compute descriptive statistics dynamically
     count = len(parsed_values)
     total_sum = sum(parsed_values)
     min_val = min(parsed_values)
@@ -71,17 +71,17 @@ async def calculate_stats(values: str = Query(..., description="Comma-separated 
     mean_val = total_sum / count
 
     return {
-        "email": "24f1001287@ds.study.iitm.ac.in",  # <-- REPLACE WITH YOUR ACTUAL ASSIGNMENT EMAIL
+        "email": "24f1001287@ds.study.iitm.ac.in",
         "count": count,
         "sum": total_sum,
         "min": min_val,
         "max": max_val,
-        "mean": round(mean_val, 4)  # Safely within the ±0.01 requirement
+        "mean": round(mean_val, 4)
     }
 
 @app.get("/")
 async def root():
-    return {"message": "Stats API is live. Use /stats?values=1,2,3"}
+    return {"message": "Stats API is live."}
 
 if __name__ == "__main__":
     import uvicorn
