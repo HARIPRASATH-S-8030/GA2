@@ -14,7 +14,7 @@ app.add_middleware(
         "https://dash-55nz6e.example.com"
     ],
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
